@@ -1,0 +1,1026 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unreal Engine 5 Subsurface Foliage Simulation Engine</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Post-processing Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #020617;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            user-select: none;
+        }
+        #webgl-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.8);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(14, 165, 233, 0.5);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(14, 165, 233, 0.9);
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        .badge-glow {
+            box-shadow: 0 0 20px rgba(14, 165, 233, 0.35);
+        }
+        .ue-gradient {
+            background: linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%);
+        }
+    </style>
+</head>
+<body class="text-slate-100">
+
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- Top Left HUD -->
+    <div class="fixed top-4 left-4 z-10 flex items-center gap-3">
+        <div class="glass-panel px-4 py-2.5 rounded-xl flex items-center gap-3 shadow-2xl badge-glow">
+            <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
+                <span class="text-xs font-bold uppercase tracking-wider text-cyan-300">UE5 Nanite & Lumen Foliage</span>
+            </div>
+            <div class="h-4 w-[1px] bg-slate-700"></div>
+            <div class="text-xs font-mono text-slate-300">
+                FPS: <span id="fps-counter" class="text-cyan-300 font-bold">60</span>
+            </div>
+            <div class="h-4 w-[1px] bg-slate-700"></div>
+            <div class="text-xs font-mono text-slate-300">
+                Nanite Instances: <span id="blade-count" class="text-cyan-300 font-bold">160,000</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Control Panel -->
+    <div id="control-panel" class="fixed top-4 right-4 z-10 w-88 max-h-[calc(100vh-2rem)] glass-panel rounded-2xl p-5 overflow-y-auto shadow-2xl flex flex-col gap-5 transition-all duration-300">
+        <!-- Panel Header -->
+        <div class="flex items-center justify-between pb-3 border-b border-slate-700/60">
+            <div class="flex items-center gap-2">
+                <div class="p-1.5 rounded-lg ue-gradient text-white shadow-md">
+                    <i data-lucide="box" class="w-4 h-4"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-sm text-slate-100">UE5 Foliage Inspector</h2>
+                    <p class="text-[10px] text-slate-400">Subsurface Scattering & Lumen Lighting</p>
+                </div>
+            </div>
+            <button id="toggle-panel-btn" class="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition">
+                <i data-lucide="chevron-right" class="w-5 h-5"></i>
+            </button>
+        </div>
+
+        <!-- Preset Selection -->
+        <div>
+            <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-2">Preset Pencahayaan UE5</label>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="applyPreset('ue5_day')" class="px-3 py-2 text-xs font-medium bg-cyan-950/70 border border-cyan-500/50 hover:bg-cyan-800/60 rounded-xl transition text-cyan-200 text-left flex items-center gap-2 shadow-sm">
+                    <span class="w-2 h-2 rounded-full bg-cyan-400"></span> Lumen Daylight
+                </button>
+                <button onclick="applyPreset('sunset_glow')" class="px-3 py-2 text-xs font-medium bg-amber-950/70 border border-amber-500/50 hover:bg-amber-800/60 rounded-xl transition text-amber-200 text-left flex items-center gap-2 shadow-sm">
+                    <span class="w-2 h-2 rounded-full bg-amber-400"></span> Golden Hour SSS
+                </button>
+                <button onclick="applyPreset('rain_dew')" class="px-3 py-2 text-xs font-medium bg-blue-950/70 border border-blue-500/50 hover:bg-blue-800/60 rounded-xl transition text-blue-200 text-left flex items-center gap-2 shadow-sm">
+                    <span class="w-2 h-2 rounded-full bg-blue-400"></span> Wet Rain & Dew
+                </button>
+                <button onclick="applyPreset('overcast_fog')" class="px-3 py-2 text-xs font-medium bg-slate-800 border border-slate-600 hover:bg-slate-700 rounded-xl transition text-slate-200 text-left flex items-center gap-2 shadow-sm">
+                    <span class="w-2 h-2 rounded-full bg-slate-400"></span> Overcast Fog
+                </button>
+            </div>
+        </div>
+
+        <!-- Camera Preset Switcher -->
+        <div class="space-y-2">
+            <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">Prespektif Kamera Cinematic</label>
+            <div class="flex gap-2">
+                <button id="btn-cam-orbit" onclick="setCameraMode('orbit')" class="flex-1 py-1.5 px-3 text-xs bg-cyan-500/20 border border-cyan-500/50 rounded-lg text-cyan-300 font-medium hover:bg-cyan-500/30 transition">
+                    UE Viewport
+                </button>
+                <button id="btn-cam-macro" onclick="setCameraMode('macro')" class="flex-1 py-1.5 px-3 text-xs bg-slate-800 border border-slate-700 rounded-lg text-slate-300 font-medium hover:bg-slate-700 transition">
+                    Macro Bokeh 📸
+                </button>
+            </div>
+        </div>
+
+        <!-- UE5 Foliage Material Settings -->
+        <div class="space-y-3">
+            <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">UE5 Material Foliage</label>
+            <div>
+                <div class="flex justify-between text-xs text-slate-300 mb-1">
+                    <span>Intensitas Subsurface (SSS)</span>
+                    <span id="val-sss">0.85</span>
+                </div>
+                <input type="range" id="input-sss" min="0.0" max="1.5" step="0.05" value="0.85" class="w-full accent-cyan-400 bg-slate-800 rounded-lg h-1.5 cursor-pointer">
+            </div>
+            <div>
+                <div class="flex justify-between text-xs text-slate-300 mb-1">
+                    <span>Kebasahan / Embun (Wetness)</span>
+                    <span id="val-wetness">0.35</span>
+                </div>
+                <input type="range" id="input-wetness" min="0.0" max="1.0" step="0.05" value="0.35" class="w-full accent-cyan-400 bg-slate-800 rounded-lg h-1.5 cursor-pointer">
+            </div>
+            <div>
+                <div class="flex justify-between text-xs text-slate-300 mb-1">
+                    <span>Tingkat Rumpun (Clumping Factor)</span>
+                    <span id="val-clump">0.75</span>
+                </div>
+                <input type="range" id="input-clump" min="0.1" max="1.5" step="0.05" value="0.75" class="w-full accent-cyan-400 bg-slate-800 rounded-lg h-1.5 cursor-pointer">
+            </div>
+        </div>
+
+        <!-- Wind Dynamics Simulation -->
+        <div class="space-y-3">
+            <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">Vektor Fizik Angin (WPO)</label>
+            <div>
+                <div class="flex justify-between text-xs text-slate-300 mb-1">
+                    <span>Kecepatan Hembusan Angin</span>
+                    <span id="val-windSpeed">1.4</span>
+                </div>
+                <input type="range" id="input-windSpeed" min="0.1" max="4.0" step="0.1" value="1.4" class="w-full accent-cyan-400 bg-slate-800 rounded-lg h-1.5 cursor-pointer">
+            </div>
+            <div>
+                <div class="flex justify-between text-xs text-slate-300 mb-1">
+                    <span>Getaran Tip Ujung (High Freq)</span>
+                    <span id="val-flutter">0.70</span>
+                </div>
+                <input type="range" id="input-flutter" min="0.1" max="2.0" step="0.05" value="0.70" class="w-full accent-cyan-400 bg-slate-800 rounded-lg h-1.5 cursor-pointer">
+            </div>
+        </div>
+
+        <!-- Density & Vegetation Layer -->
+        <div class="space-y-3">
+            <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">Kepadatan Vegetasi Nanite</label>
+            <div>
+                <div class="flex justify-between text-xs text-slate-300 mb-1">
+                    <span>Jumlah Helai Rumput</span>
+                    <span id="val-density">160k</span>
+                </div>
+                <input type="range" id="input-density" min="50000" max="250000" step="10000" value="160000" class="w-full accent-cyan-400 bg-slate-800 rounded-lg h-1.5 cursor-pointer">
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-xs text-slate-300">Warna Ujung Rumput</span>
+                <input type="color" id="input-tipColor" value="#72f263" class="w-8 h-8 rounded border-0 cursor-pointer bg-transparent">
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-xs text-slate-300">Warna Akar / Contact AO</span>
+                <input type="color" id="input-baseColor" value="#021f0b" class="w-8 h-8 rounded border-0 cursor-pointer bg-transparent">
+            </div>
+            <div class="flex items-center justify-between pt-1">
+                <span class="text-xs text-slate-300">Tampilkan Bunga Liar & Spora</span>
+                <input type="checkbox" id="input-toggleFlowers" checked class="w-4 h-4 accent-cyan-400 rounded cursor-pointer">
+            </div>
+        </div>
+
+        <!-- Technical Details -->
+        <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800 text-xs text-slate-400 leading-relaxed">
+            <p><strong class="text-cyan-300">Fitur Engine UE5:</strong> Memakai model material *Two-Sided Subsurface Foliage*, *World Position Offset (WPO)* wind turbulence, serta *Clump Procedural Noise* untuk menyebarkan rumpun vegetasi secara alami.</p>
+        </div>
+    </div>
+
+    <script>
+        /*
+         * UE5 GLSL VERTEX SHADER
+         * WPO (World Position Offset) Wind Simulation with Multi-tier Turbulence,
+         * V-shaped Blade Midrib Curved Geometry, Procedural Clump Displacement, & Spring Mouse Push.
+         */
+        const grassVertexShader = `
+            precision highp float;
+
+            attribute vec3 position;
+            attribute vec2 uv;
+            attribute vec3 normal;
+            attribute vec3 instancePosition;
+            attribute float instanceScale;
+            attribute float instanceRotation;
+            attribute float instancePhase;
+            attribute float instanceBend;
+            attribute float instanceColorSeed;
+            attribute float instanceClumpId;
+
+            uniform mat4 modelViewMatrix;
+            uniform mat4 projectionMatrix;
+            uniform mat3 normalMatrix;
+
+            uniform float uTime;
+            uniform float uWindSpeed;
+            uniform float uWindFlutter;
+            uniform float uGrassHeight;
+            uniform vec3 uMouseWorldPos;
+
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying float vWindFactor;
+            varying float vColorSeed;
+            varying float vClumpNoise;
+            varying float vTipFlutter;
+
+            // Simplex Noise 2D Function
+            vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+            vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+
+            float snoise(vec2 v) {
+                const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+                vec2 i  = floor(v + dot(v, C.yy) );
+                vec2 x0 = v -   i + dot(i, C.xx);
+                vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+                vec4 x12 = x0.xyxy + C.xxzz;
+                x12.xy -= i1;
+                i = mod289(i);
+                vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+                vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+                m = m*m;
+                m = m*m;
+                vec3 x = 2.0 * fract(p * C.www) - 1.0;
+                vec3 h = abs(x) - 0.5;
+                vec3 ox = floor(x + 0.5);
+                vec3 a0 = x - ox;
+                m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+                vec3 g;
+                g.x  = a0.x  * x0.x  + h.x  * x0.y;
+                g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+                return 130.0 * dot(m, g);
+            }
+
+            void main() {
+                vUv = uv;
+                vColorSeed = instanceColorSeed;
+
+                // Rotasi individual helai rumput di sumbu Y
+                float c = cos(instanceRotation);
+                float s = sin(instanceRotation);
+                mat3 rotY = mat3(
+                    c, 0.0, s,
+                    0.0, 1.0, 0.0,
+                   -s, 0.0, c
+                );
+
+                vec3 worldBasePos = instancePosition;
+
+                // Clump Noise & Density Mapping
+                vClumpNoise = snoise(worldBasePos.xz * 0.08);
+
+                // Skala & Tinggi Helai
+                vec3 pos = position;
+                pos.y *= instanceScale * uGrassHeight;
+
+                // Lengkungan Alami Pertumbuhan Rumput (Natural Bending Curve)
+                float bendFactor = pow(uv.y, 1.8) * instanceBend;
+                pos.z += bendFactor * 0.38;
+
+                // Rotasi Sumbu Y
+                pos = rotY * pos;
+
+                // UE5 Foliage WPO Wind Simulation
+                vec2 windCoord1 = (worldBasePos.xz * 0.09) + vec2(uTime * uWindSpeed * 0.22, uTime * uWindSpeed * 0.15);
+                vec2 windCoord2 = (worldBasePos.xz * 0.28) - vec2(uTime * uWindSpeed * 0.42, uTime * uWindSpeed * 0.35);
+                
+                float wave1 = snoise(windCoord1);
+                float wave2 = snoise(windCoord2) * 0.35;
+                
+                // High-frequency tip flutter simulation
+                float flutter = sin(uTime * 9.0 + instancePhase + worldBasePos.x) * 0.08 * uWindFlutter;
+                vTipFlutter = flutter;
+                
+                float heightWeight = pow(uv.y, 1.8);
+                vWindFactor = (wave1 + wave2) * heightWeight;
+
+                // Directional Displacement (Hembusan Angin Utama)
+                vec3 windDir = normalize(vec3(0.85, 0.0, 0.52));
+                pos += windDir * (vWindFactor * 0.95 + flutter * heightWeight);
+
+                // Reaksi Interaktif dengan Kursor Mouse
+                float distToMouse = distance(worldBasePos.xz, uMouseWorldPos.xz);
+                float mouseRadius = 4.2;
+                if (distToMouse < mouseRadius) {
+                    float pushFactor = (1.0 - distToMouse / mouseRadius) * heightWeight * 2.2;
+                    vec2 pushDir = normalize(worldBasePos.xz - uMouseWorldPos.xz);
+                    pos.xz += pushDir * pushFactor;
+                }
+
+                // Posisi Akhir
+                vec3 finalWorldPos = worldBasePos + pos;
+                vWorldPosition = finalWorldPos;
+
+                // Kalkulasi Normal 3D
+                vNormal = normalMatrix * (rotY * normal);
+
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(finalWorldPos, 1.0);
+            }
+        `;
+
+        /*
+         * STREAMING_CHUNK:Defining Fragment Shader for UE5 Two-Sided Subsurface Material...
+         * UE5 GLSL FRAGMENT SHADER
+         * Implements UE5 Two-Sided Foliage Material Model:
+         * Subsurface Scattering (SSS) Backlight Transmission, Anisotropic Specular Highlight,
+         * Contact Shadow Root Ambient Occlusion, & Surface Wetness Glossiness.
+         */
+        const grassFragmentShader = `
+            precision highp float;
+
+            varying vec2 vUv;
+            varying vec3 vNormal;
+            varying vec3 vWorldPosition;
+            varying float vWindFactor;
+            varying float vColorSeed;
+            varying float vClumpNoise;
+            varying float vTipFlutter;
+
+            uniform vec3 uBaseColor;
+            uniform vec3 uTipColor;
+            uniform vec3 uSunDirection;
+            uniform vec3 uSunColor;
+            uniform vec3 uSkyColor;
+            uniform vec3 uCameraPosition;
+            uniform float uSubsurfaceIntensity;
+            uniform float uWetness;
+
+            void main() {
+                vec3 normal = normalize(vNormal);
+                vec3 lightDir = normalize(uSunDirection);
+                vec3 viewDir = normalize(uCameraPosition - vWorldPosition);
+
+                // Base Colors
+                vec3 baseCol = uBaseColor;
+                vec3 tipCol = uTipColor;
+
+                // Variasi Warna Berdasarkan Rumpun (Clump Variation)
+                if (vClumpNoise > 0.15) {
+                    vec3 lushTip = vec3(0.35, 0.92, 0.28);
+                    tipCol = mix(tipCol, lushTip, clamp((vClumpNoise - 0.15) * 1.8, 0.0, 0.75));
+                } else if (vClumpNoise < -0.15) {
+                    vec3 dryTip = vec3(0.68, 0.78, 0.22);
+                    tipCol = mix(tipCol, dryTip, clamp((-vClumpNoise - 0.15) * 1.8, 0.0, 0.75));
+                }
+
+                // Noise Tambahan Per-Helai
+                tipCol += (vColorSeed - 0.5) * 0.07;
+
+                // Gradasi Warna Akar ke Ujung
+                vec3 grassColor = mix(baseCol, tipCol, pow(vUv.y, 0.75));
+
+                // Ujung Kering Layu (Dry Tips pada 7% paling atas)
+                if (vUv.y > 0.93) {
+                    float dryFactor = smoothstep(0.93, 1.0, vUv.y) * (vColorSeed * 0.8);
+                    vec3 dryColor = vec3(0.82, 0.68, 0.38);
+                    grassColor = mix(grassColor, dryColor, dryFactor);
+                }
+
+                // UE5 Contact AO (Ambient Occlusion Bawah Akar)
+                float rootAO = smoothstep(0.0, 0.38, vUv.y);
+                grassColor *= mix(0.18, 1.0, rootAO);
+
+                // Pencahayaan Diffuse Dua Sisi (Two-Sided Lighting)
+                float NdotL = max(dot(normal, lightDir), 0.0);
+                float backLight = max(dot(-normal, lightDir), 0.0) * 0.5;
+                float totalDiffuse = NdotL + backLight;
+
+                // UE5 Subsurface Scattering (SSS) Foliage Model
+                // Pendaran Cahaya Tembus Daun
+                float sssDot = max(dot(-viewDir, lightDir), 0.0);
+                float SSS = pow(sssDot, 2.8) * vUv.y * uSubsurfaceIntensity;
+                vec3 sssTranslucencyColor = tipCol * vec3(1.35, 1.25, 0.25);
+
+                // Specular Highlight (Kilap Permukaan Waxy / Lilin)
+                vec3 halfVector = normalize(lightDir + viewDir);
+                float NdotH = max(dot(normal, halfVector), 0.0);
+                float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 3.5) * 0.35;
+                float specular = (pow(NdotH, 32.0) + fresnel) * 0.4 * vUv.y;
+
+                // Replikasi Embun / Basah (Wetness Layer)
+                if (uWetness > 0.05) {
+                    float wetSpecular = pow(NdotH, 64.0) * uWetness * 1.5;
+                    specular += wetSpecular;
+                    grassColor = mix(grassColor, grassColor * 0.7, uWetness * 0.3); // Permukaan basah lebih gelap & mengkilap
+                }
+
+                // Hemispherical Ambient Lighting (Langit + Tanah)
+                vec3 skyLight = uSkyColor * 0.5;
+                vec3 groundLight = vec3(0.05, 0.04, 0.02) * 0.35;
+                vec3 ambient = mix(groundLight, skyLight, normal.y * 0.5 + 0.5);
+
+                // Komposisi Warna Render Akhir
+                vec3 finalColor = grassColor * (uSunColor * totalDiffuse + ambient) 
+                                + (sssTranslucencyColor * SSS * uSunColor) 
+                                + (uSunColor * specular);
+
+                // Distance Atmosphere Fog Decay
+                float dist = length(uCameraPosition - vWorldPosition);
+                float fogFactor = smoothstep(25.0, 90.0, dist);
+                finalColor = mix(finalColor, uSkyColor, fogFactor);
+
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+    </script>
+
+    <script>
+        // Lucide Icons Initialization
+        lucide.createIcons();
+
+        // Canvas & Window Dimensions
+        const canvas = document.getElementById('webgl-canvas');
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+
+        // Configuration State (UE5 Defaults)
+        const config = {
+            bladeCount: 160000,
+            windSpeed: 1.4,
+            windFlutter: 0.70,
+            grassHeight: 1.45,
+            baseColor: '#021f0b',
+            tipColor: '#72f263',
+            subsurfaceIntensity: 0.85,
+            wetness: 0.35,
+            clumpingFactor: 0.75,
+            bloomStrength: 0.5,
+            sunElevation: 25,
+            fieldSize: 54.0,
+            showFlowers: true
+        };
+
+        // FPS Tracker
+        let frameCount = 0;
+        let lastTime = performance.now();
+        const fpsCounter = document.getElementById('fps-counter');
+
+        // Three.js Core Setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(48, width / height, 0.1, 160);
+        camera.position.set(0, 3.8, 14.0);
+
+        const renderer = new THREE.WebGLRenderer({
+            canvas: canvas,
+            antialias: true,
+            powerPreference: "high-performance"
+        });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+
+        // Orbit Controls
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.04;
+        controls.maxPolarAngle = Math.PI / 2 - 0.02;
+        controls.minDistance = 1.2;
+        controls.maxDistance = 55;
+        controls.target.set(0, 1.1, 0);
+
+        // Post-Processing Pipeline
+        const composer = new THREE.EffectComposer(renderer);
+        const renderPass = new THREE.RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        const bloomPass = new THREE.UnrealBloomPass(
+            new THREE.Vector2(width, height),
+            config.bloomStrength,
+            0.4,
+            0.82
+        );
+        composer.addPass(bloomPass);
+
+        // Raycasting for Mouse Interaction
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2(-1000, -1000);
+        const mouseWorldPos = new THREE.Vector3(1000, 0, 1000);
+
+        // 1. High-Detail V-Shaped Cross Section Grass Blade Geometry
+        function createUE5BladeGeometry() {
+            const geom = new THREE.BufferGeometry();
+            const segments = 7;
+            const positions = [];
+            const uvs = [];
+            const normals = [];
+            const indices = [];
+
+            const bladeWidth = 0.12;
+            const bladeHeight = 1.3;
+
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                const currentWidth = bladeWidth * (1.0 - Math.pow(t, 1.5) * 0.8);
+                const y = t * bladeHeight;
+
+                // Tulang Daun V-Shape Midrib Deep Fold
+                const midribDepth = (1.0 - t) * 0.04;
+                const zCurve = Math.pow(t, 2) * 0.25;
+
+                // Left Vertex
+                positions.push(-currentWidth, y, zCurve);
+                uvs.push(0.0, t);
+                normals.push(-0.45, 0.2, 0.87);
+
+                // Center Midrib Vertex (Titik Lipatan Tengah V)
+                positions.push(0.0, y, zCurve + midribDepth);
+                uvs.push(0.5, t);
+                normals.push(0.0, 0.2, 1.0);
+
+                // Right Vertex
+                positions.push(currentWidth, y, zCurve);
+                uvs.push(1.0, t);
+                normals.push(0.45, 0.2, 0.87);
+            }
+
+            for (let i = 0; i < segments; i++) {
+                const vi = i * 3;
+                // Left Triangle
+                indices.push(vi, vi + 1, vi + 3);
+                indices.push(vi + 3, vi + 1, vi + 4);
+                // Right Triangle
+                indices.push(vi + 1, vi + 2, vi + 4);
+                indices.push(vi + 4, vi + 2, vi + 5);
+            }
+
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            geom.setIndex(indices);
+
+            return geom;
+        }
+
+        // 2. Uniforms & Material Setup
+        const grassUniforms = {
+            uTime: { value: 0 },
+            uWindSpeed: { value: config.windSpeed },
+            uWindFlutter: { value: config.windFlutter },
+            uGrassHeight: { value: config.grassHeight },
+            uBaseColor: { value: new THREE.Color(config.baseColor) },
+            uTipColor: { value: new THREE.Color(config.tipColor) },
+            uSubsurfaceIntensity: { value: config.subsurfaceIntensity },
+            uWetness: { value: config.wetness },
+            uSunDirection: { value: new THREE.Vector3(0, 1, 1).normalize() },
+            uSunColor: { value: new THREE.Color('#fff4e0') },
+            uSkyColor: { value: new THREE.Color('#102038') },
+            uCameraPosition: { value: camera.position },
+            uMouseWorldPos: { value: mouseWorldPos }
+        };
+
+        const grassMaterial = new THREE.RawShaderMaterial({
+            vertexShader: grassVertexShader,
+            fragmentShader: grassFragmentShader,
+            uniforms: grassUniforms,
+            side: THREE.DoubleSide
+        });
+
+        let grassMesh = null;
+        const bladeBaseGeometry = createUE5BladeGeometry();
+
+        // 3. Generate Instanced Grass Field with Procedural Clumping
+        function generateGrassField(count) {
+            if (grassMesh) {
+                scene.remove(grassMesh);
+                grassMesh.geometry.dispose();
+            }
+
+            const instancedGeom = new THREE.InstancedBufferGeometry();
+            instancedGeom.setIndex(bladeBaseGeometry.index);
+            instancedGeom.setAttribute('position', bladeBaseGeometry.attributes.position);
+            instancedGeom.setAttribute('uv', bladeBaseGeometry.attributes.uv);
+            instancedGeom.setAttribute('normal', bladeBaseGeometry.attributes.normal);
+
+            const instancePositions = new Float32Array(count * 3);
+            const instanceScales = new Float32Array(count);
+            const instanceRotations = new Float32Array(count);
+            const instancePhases = new Float32Array(count);
+            const instanceBends = new Float32Array(count);
+            const instanceColorSeeds = new Float32Array(count);
+
+            // Clumping Center Points
+            const clumpCount = 180;
+            const clumps = [];
+            for (let c = 0; c < clumpCount; c++) {
+                clumps.push({
+                    x: (Math.random() - 0.5) * config.fieldSize,
+                    z: (Math.random() - 0.5) * config.fieldSize,
+                    radius: 1.5 + Math.random() * 3.0
+                });
+            }
+
+            for (let i = 0; i < count; i++) {
+                // Determine placement (mix between clumping and natural dispersion)
+                let x, z;
+                if (Math.random() < 0.75) {
+                    const clump = clumps[Math.floor(Math.random() * clumpCount)];
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.pow(Math.random(), 0.5) * clump.radius;
+                    x = clump.x + Math.cos(angle) * dist;
+                    z = clump.z + Math.sin(angle) * dist;
+                } else {
+                    x = (Math.random() - 0.5) * config.fieldSize;
+                    z = (Math.random() - 0.5) * config.fieldSize;
+                }
+
+                const y = Math.sin(x * 0.08) * Math.cos(z * 0.08) * 0.35;
+
+                instancePositions[i * 3] = x;
+                instancePositions[i * 3 + 1] = y;
+                instancePositions[i * 3 + 2] = z;
+
+                instanceScales[i] = 0.65 + Math.random() * 0.75;
+                instanceRotations[i] = Math.random() * Math.PI * 2;
+                instancePhases[i] = Math.random() * Math.PI * 2;
+                instanceBends[i] = 0.28 + Math.random() * 0.85;
+                instanceColorSeeds[i] = Math.random();
+            }
+
+            instancedGeom.setAttribute('instancePosition', new THREE.InstancedBufferAttribute(instancePositions, 3));
+            instancedGeom.setAttribute('instanceScale', new THREE.InstancedBufferAttribute(instanceScales, 1));
+            instancedGeom.setAttribute('instanceRotation', new THREE.InstancedBufferAttribute(instanceRotations, 1));
+            instancedGeom.setAttribute('instancePhase', new THREE.InstancedBufferAttribute(instancePhases, 1));
+            instancedGeom.setAttribute('instanceBend', new THREE.InstancedBufferAttribute(instanceBends, 1));
+            instancedGeom.setAttribute('instanceColorSeed', new THREE.InstancedBufferAttribute(instanceColorSeeds, 1));
+
+            grassMesh = new THREE.Mesh(instancedGeom, grassMaterial);
+            grassMesh.frustumCulled = false;
+            scene.add(grassMesh);
+
+            const bladeCounterEl = document.getElementById('blade-count');
+            if (bladeCounterEl) {
+                bladeCounterEl.innerText = count.toLocaleString('id-ID');
+            }
+        }
+
+        // 4. Wildflowers & Spore Particles Layer
+        let flowerGroup = new THREE.Group();
+        scene.add(flowerGroup);
+
+        function generateFlowers() {
+            while(flowerGroup.children.length > 0){
+                const child = flowerGroup.children[0];
+                flowerGroup.remove(child);
+                if(child.geometry) child.geometry.dispose();
+            }
+
+            if (!config.showFlowers) return;
+
+            const flowerCount = 1900;
+            const flowerGeom = new THREE.DodecahedronGeometry(0.085, 1);
+            const flowerMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.5,
+                emissive: 0xffea88,
+                emissiveIntensity: 0.25
+            });
+
+            const instancedFlowers = new THREE.InstancedMesh(flowerGeom, flowerMat, flowerCount);
+            const dummy = new THREE.Object3D();
+
+            for (let i = 0; i < flowerCount; i++) {
+                const x = (Math.random() - 0.5) * (config.fieldSize * 0.92);
+                const z = (Math.random() - 0.5) * (config.fieldSize * 0.92);
+                const y = Math.sin(x * 0.08) * Math.cos(z * 0.08) * 0.35 + (0.95 + Math.random() * 0.55);
+
+                dummy.position.set(x, y, z);
+                const scale = 0.8 + Math.random() * 1.0;
+                dummy.scale.set(scale, scale, scale);
+                dummy.rotation.set(Math.random() * 0.2, Math.random() * Math.PI, Math.random() * 0.2);
+                dummy.updateMatrix();
+
+                instancedFlowers.setMatrixAt(i, dummy.matrix);
+            }
+            instancedFlowers.instanceMatrix.needsUpdate = true;
+            flowerGroup.add(instancedFlowers);
+        }
+
+        // 5. Terrain Ground Surface with Damp Earth Specular
+        const groundGeom = new THREE.PlaneGeometry(config.fieldSize * 1.35, config.fieldSize * 1.35, 64, 64);
+        groundGeom.rotateX(-Math.PI / 2);
+        
+        const groundPos = groundGeom.attributes.position;
+        for (let i = 0; i < groundPos.count; i++) {
+            const x = groundPos.getX(i);
+            const z = groundPos.getZ(i);
+            groundPos.setY(i, Math.sin(x * 0.08) * Math.cos(z * 0.08) * 0.35 - 0.03);
+        }
+        groundGeom.computeVertexNormals();
+
+        const groundMat = new THREE.MeshStandardMaterial({
+            color: 0x09140b,
+            roughness: 0.88 - (config.wetness * 0.4),
+            metalness: 0.1
+        });
+        const groundMesh = new THREE.Mesh(groundGeom, groundMat);
+        scene.add(groundMesh);
+
+        // Raycast Plane for Mouse Position
+        const raycastPlane = new THREE.Mesh(
+            new THREE.PlaneGeometry(200, 200).rotateX(-Math.PI / 2),
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        scene.add(raycastPlane);
+
+        // 6. Floating Atmosphere Pollen Particle System
+        const particleCount = 500;
+        const particleGeom = new THREE.BufferGeometry();
+        const particlePos = new Float32Array(particleCount * 3);
+        const particleVel = [];
+
+        for (let i = 0; i < particleCount; i++) {
+            particlePos[i * 3] = (Math.random() - 0.5) * 45;
+            particlePos[i * 3 + 1] = Math.random() * 6.5 + 0.2;
+            particlePos[i * 3 + 2] = (Math.random() - 0.5) * 45;
+
+            particleVel.push({
+                x: (Math.random() - 0.5) * 0.02,
+                y: Math.random() * 0.009 + 0.002,
+                z: (Math.random() - 0.5) * 0.02
+            });
+        }
+        particleGeom.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+
+        const particleMat = new THREE.PointsMaterial({
+            color: 0xfff3a8,
+            size: 0.09,
+            transparent: true,
+            opacity: 0.7,
+            blending: THREE.AdditiveBlending
+        });
+        const particleSystem = new THREE.Points(particleGeom, particleMat);
+        scene.add(particleSystem);
+
+        // Lighting & Atmosphere Setup
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionalLight(0xfff4e0, 1.4);
+        scene.add(sunLight);
+
+        function updateSunPosition(elevationDeg) {
+            const rad = (elevationDeg * Math.PI) / 180;
+            const x = Math.cos(rad) * 35;
+            const y = Math.sin(rad) * 35;
+            const z = 22;
+
+            sunLight.position.set(x, y, z);
+            grassUniforms.uSunDirection.value.copy(sunLight.position).normalize();
+
+            // Atmosphere Sky & Ground Colors according to sun angle
+            if (elevationDeg < 16) {
+                scene.background = new THREE.Color('#1f0e13');
+                grassUniforms.uSkyColor.value.set('#321520');
+                grassUniforms.uSunColor.value.set('#ff6230');
+                bloomPass.strength = config.bloomStrength * 1.35;
+            } else if (elevationDeg < 32) {
+                scene.background = new THREE.Color('#081526');
+                grassUniforms.uSkyColor.value.set('#122640');
+                grassUniforms.uSunColor.value.set('#ffd982');
+                bloomPass.strength = config.bloomStrength;
+            } else {
+                scene.background = new THREE.Color('#06111e');
+                grassUniforms.uSkyColor.value.set('#0d2038');
+                grassUniforms.uSunColor.value.set('#fff5e3');
+                bloomPass.strength = config.bloomStrength * 0.85;
+            }
+        }
+
+        // Initialize Grass & Atmosphere
+        generateGrassField(config.bladeCount);
+        generateFlowers();
+        updateSunPosition(config.sunElevation);
+
+        // UI Control Event Listeners
+        document.getElementById('input-sss').addEventListener('input', (e) => {
+            config.subsurfaceIntensity = parseFloat(e.target.value);
+            grassUniforms.uSubsurfaceIntensity.value = config.subsurfaceIntensity;
+            document.getElementById('val-sss').innerText = config.subsurfaceIntensity;
+        });
+
+        document.getElementById('input-wetness').addEventListener('input', (e) => {
+            config.wetness = parseFloat(e.target.value);
+            grassUniforms.uWetness.value = config.wetness;
+            groundMat.roughness = 0.88 - (config.wetness * 0.4);
+            document.getElementById('val-wetness').innerText = config.wetness;
+        });
+
+        document.getElementById('input-windSpeed').addEventListener('input', (e) => {
+            config.windSpeed = parseFloat(e.target.value);
+            grassUniforms.uWindSpeed.value = config.windSpeed;
+            document.getElementById('val-windSpeed').innerText = config.windSpeed;
+        });
+
+        document.getElementById('input-flutter').addEventListener('input', (e) => {
+            config.windFlutter = parseFloat(e.target.value);
+            grassUniforms.uWindFlutter.value = config.windFlutter;
+            document.getElementById('val-flutter').innerText = config.windFlutter;
+        });
+
+        document.getElementById('input-density').addEventListener('change', (e) => {
+            config.bladeCount = parseInt(e.target.value);
+            generateGrassField(config.bladeCount);
+            document.getElementById('val-density').innerText = (config.bladeCount / 1000) + 'k';
+        });
+
+        document.getElementById('input-tipColor').addEventListener('input', (e) => {
+            config.tipColor = e.target.value;
+            grassUniforms.uTipColor.value.set(config.tipColor);
+        });
+
+        document.getElementById('input-baseColor').addEventListener('input', (e) => {
+            config.baseColor = e.target.value;
+            grassUniforms.uBaseColor.value.set(config.baseColor);
+        });
+
+        document.getElementById('input-toggleFlowers').addEventListener('change', (e) => {
+            config.showFlowers = e.target.checked;
+            generateFlowers();
+        });
+
+        // Camera Modes Handler
+        window.setCameraMode = function(mode) {
+            const btnOrbit = document.getElementById('btn-cam-orbit');
+            const btnMacro = document.getElementById('btn-cam-macro');
+
+            if (mode === 'macro') {
+                camera.position.set(0, 0.82, 2.6);
+                controls.target.set(0, 0.6, 0);
+                btnMacro.className = "flex-1 py-1.5 px-3 text-xs bg-cyan-500/20 border border-cyan-500/50 rounded-lg text-cyan-300 font-medium transition";
+                btnOrbit.className = "flex-1 py-1.5 px-3 text-xs bg-slate-800 border border-slate-700 rounded-lg text-slate-300 font-medium hover:bg-slate-700 transition";
+            } else {
+                camera.position.set(0, 3.8, 14.0);
+                controls.target.set(0, 1.1, 0);
+                btnOrbit.className = "flex-1 py-1.5 px-3 text-xs bg-cyan-500/20 border border-cyan-500/50 rounded-lg text-cyan-300 font-medium transition";
+                btnMacro.className = "flex-1 py-1.5 px-3 text-xs bg-slate-800 border border-slate-700 rounded-lg text-slate-300 font-medium hover:bg-slate-700 transition";
+            }
+        };
+
+        // Mouse Raycast for Bending Interaction
+        window.addEventListener('pointermove', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(raycastPlane);
+            if (intersects.length > 0) {
+                mouseWorldPos.copy(intersects[0].point);
+            }
+        });
+
+        // Window Resize Event
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+            composer.setSize(width, height);
+        });
+
+        // Toggle Control Panel
+        const controlPanel = document.getElementById('control-panel');
+        const toggleBtn = document.getElementById('toggle-panel-btn');
+        let isPanelOpen = true;
+
+        toggleBtn.addEventListener('click', () => {
+            isPanelOpen = !isPanelOpen;
+            if (isPanelOpen) {
+                controlPanel.classList.remove('translate-x-[calc(100%-3rem)]');
+                toggleBtn.innerHTML = `<i data-lucide="chevron-right" class="w-5 h-5"></i>`;
+            } else {
+                controlPanel.classList.add('translate-x-[calc(100%-3rem)]');
+                toggleBtn.innerHTML = `<i data-lucide="chevron-left" class="w-5 h-5"></i>`;
+            }
+            lucide.createIcons();
+        });
+
+        // Preset Switcher Function
+        window.applyPreset = function(preset) {
+            switch(preset) {
+                case 'ue5_day':
+                    config.baseColor = '#021f0b';
+                    config.tipColor = '#72f263';
+                    config.sunElevation = 25;
+                    config.windSpeed = 1.4;
+                    config.subsurfaceIntensity = 0.85;
+                    config.wetness = 0.35;
+                    config.bloomStrength = 0.5;
+                    break;
+                case 'sunset_glow':
+                    config.baseColor = '#1c0c02';
+                    config.tipColor = '#ffc53d';
+                    config.sunElevation = 11;
+                    config.windSpeed = 1.8;
+                    config.subsurfaceIntensity = 1.25;
+                    config.wetness = 0.2;
+                    config.bloomStrength = 0.8;
+                    break;
+                case 'rain_dew':
+                    config.baseColor = '#011407';
+                    config.tipColor = '#42e374';
+                    config.sunElevation = 20;
+                    config.windSpeed = 2.2;
+                    config.subsurfaceIntensity = 0.6;
+                    config.wetness = 0.85;
+                    config.bloomStrength = 0.4;
+                    break;
+                case 'overcast_fog':
+                    config.baseColor = '#05180f';
+                    config.tipColor = '#5cb86e';
+                    config.sunElevation = 45;
+                    config.windSpeed = 0.8;
+                    config.subsurfaceIntensity = 0.45;
+                    config.wetness = 0.4;
+                    config.bloomStrength = 0.25;
+                    break;
+            }
+
+            // Sync UI
+            document.getElementById('input-tipColor').value = config.tipColor;
+            document.getElementById('input-baseColor').value = config.baseColor;
+            document.getElementById('input-sss').value = config.subsurfaceIntensity;
+            document.getElementById('input-wetness').value = config.wetness;
+            document.getElementById('input-windSpeed').value = config.windSpeed;
+
+            document.getElementById('val-sss').innerText = config.subsurfaceIntensity;
+            document.getElementById('val-wetness').innerText = config.wetness;
+            document.getElementById('val-windSpeed').innerText = config.windSpeed;
+
+            // Apply to Uniforms & Scene
+            grassUniforms.uTipColor.value.set(config.tipColor);
+            grassUniforms.uBaseColor.value.set(config.baseColor);
+            grassUniforms.uSubsurfaceIntensity.value = config.subsurfaceIntensity;
+            grassUniforms.uWetness.value = config.wetness;
+            grassUniforms.uWindSpeed.value = config.windSpeed;
+            groundMat.roughness = 0.88 - (config.wetness * 0.4);
+            updateSunPosition(config.sunElevation);
+        };
+
+        // Render Loop
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const elapsedTime = clock.getElapsedTime();
+            grassUniforms.uTime.value = elapsedTime;
+            grassUniforms.uCameraPosition.value.copy(camera.position);
+
+            // Animate Pollen Particle Motion
+            const positions = particleSystem.geometry.attributes.position.array;
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3 + 1] += particleVel[i].y;
+                positions[i * 3] += Math.sin(elapsedTime + i) * 0.006 + particleVel[i].x;
+
+                if (positions[i * 3 + 1] > 7.0) {
+                    positions[i * 3 + 1] = 0.2;
+                }
+            }
+            particleSystem.geometry.attributes.position.needsUpdate = true;
+
+            // FPS Counter
+            frameCount++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                fpsCounter.innerText = frameCount;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            controls.update();
+            composer.render();
+        }
+
+        // Start Engine Loop
+        animate();
+    </script>
+</body>
+</html>
+```
